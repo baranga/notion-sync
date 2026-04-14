@@ -15,3 +15,14 @@ node_modules
 
 #!.yarn/cache
 .pnp.*
+
+# Build output
+dist/
+
+# Notion sync shadow files
+.notion-sync/
+
+# Test env (contains tokens)
+.env.test
+
+.claude

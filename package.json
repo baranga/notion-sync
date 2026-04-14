@@ -1,4 +1,41 @@
 {
   "name": "notion-sync",
-  "packageManager": "yarn@4.10.3"
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "yarn@4.10.3",
+  "bin": "./dist/cli.js",
+  "scripts": {
+    "build": "tsc && chmod +x dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "glob": "^13.0.6",
+    "gray-matter": "^4.0.3",
+    "node-diff3": "^3.2.0",
+    "notion-client": "^7.10.0",
+    "notion-types": "^7.10.0",
+    "notion-utils": "^7.10.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4",
+    "@types/node": "^25.5.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  },
+  "dependenciesMeta": {
+    "notion-types@7.10.0": {
+      "unplugged": true
+    },
+    "notion-utils@7.10.0": {
+      "unplugged": true
+    }
+  }
 }
