@@ -1012,3 +1012,139 @@ describe.skipIf(!TOKEN || !PARENT_PAGE)("e2e: complex toggle sync", () => {
     expect((dataRow2.properties!.a as unknown[][])[0][0]).toBe("Documentation");
   }, 30_000);
 });
+
+// ---------------------------------------------------------------------------
+// Heading levels: H1–H4 round-trip (H4 is Notion's `header_4` block)
+// ---------------------------------------------------------------------------
+
+describe.skipIf(!TOKEN || !PARENT_PAGE)("e2e: heading level sync", () => {
+  let client: NotionAPI;
+  let spaceId: string;
+  let testPageId: string;
+  let tmpDir: string;
+  let filePath: string;
+  let origCwd: string;
+
+  beforeAll(async () => {
+    client = new NotionAPI({ authToken: TOKEN! });
+
+    const parentMap = await fetchPage(client, PARENT_PAGE!);
+    const parentBlock = getBlockValue(parentMap.block[PARENT_PAGE!]) as
+      | Block
+      | undefined;
+    const spaceMap = (parentMap as unknown as Record<string, unknown>)
+      .space as Record<string, unknown> | undefined;
+    spaceId =
+      parentBlock?.space_id ?? Object.keys(spaceMap ?? {})[0] ?? "";
+    if (!spaceId) throw new Error("Could not resolve spaceId");
+
+    // Create an empty test page; push will populate its headings.
+    testPageId = crypto.randomUUID();
+    const now = Date.now();
+    await submitTransaction(TOKEN!, spaceId, [
+      {
+        pointer: { table: "block", id: testPageId, spaceId },
+        path: [],
+        command: "set",
+        args: {
+          id: testPageId,
+          version: 1,
+          type: "page",
+          properties: { title: [["E2E Heading Test"]] },
+          content: [],
+          parent_id: PARENT_PAGE!,
+          parent_table: "block",
+          alive: true,
+          created_time: now,
+          last_edited_time: now,
+        },
+      },
+      {
+        pointer: { table: "block", id: PARENT_PAGE!, spaceId },
+        path: ["content"],
+        command: "listAfter",
+        args: { id: testPageId },
+      },
+    ]);
+
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "notion-sync-e2e-"));
+    filePath = path.join(tmpDir, "headings.md");
+    origCwd = process.cwd();
+    process.chdir(tmpDir);
+  }, 30_000);
+
+  afterAll(async () => {
+    if (origCwd) process.chdir(origCwd);
+
+    if (KEEP_PAGE) {
+      const url = `https://www.notion.so/${testPageId.replace(/-/g, "")}`;
+      console.log(`\nKept test page: ${url}\n`);
+    } else if (testPageId && spaceId) {
+      try {
+        await submitTransaction(TOKEN!, spaceId, [
+          {
+            pointer: { table: "block", id: testPageId, spaceId },
+            path: [],
+            command: "update",
+            args: { alive: false },
+          },
+          {
+            pointer: { table: "block", id: PARENT_PAGE!, spaceId },
+            path: ["content"],
+            command: "listRemove",
+            args: { id: testPageId },
+          },
+        ]);
+      } catch {
+        // Best-effort cleanup
+      }
+    }
+
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+  }, 30_000);
+
+  const syncConfig = () => ({ tokenV2: TOKEN!, source: "env" as const });
+  const syncOptions = (force = true) => ({
+    dryRun: false,
+    verbose: false,
+    force,
+  });
+
+  async function fetchBlock(blockId: string): Promise<Block> {
+    const map = await fetchPage(client, testPageId);
+    const block = getBlockValue(map.block[blockId]) as Block | undefined;
+    if (!block) throw new Error(`Block ${blockId} not found`);
+    return block;
+  }
+
+  it("pushes an H4 markdown heading as a Notion header_4 block", async () => {
+    const pageUrl = `https://www.notion.so/${testPageId.replace(/-/g, "")}`;
+    fs.writeFileSync(
+      filePath,
+      `---\nnotion_url: ${pageUrl}\ntitle: E2E Heading Test\n---\n\n` +
+        `# h1\n\n## h2\n\n### h3\n\n#### level 4 headline\n`,
+    );
+
+    await push(filePath, client, syncConfig(), syncOptions());
+
+    const page = await fetchBlock(testPageId);
+    const types: string[] = [];
+    for (const childId of page.content ?? []) {
+      types.push((await fetchBlock(childId)).type);
+    }
+    expect(types).toEqual([
+      "header",
+      "sub_header",
+      "sub_sub_header",
+      "header_4",
+    ]);
+  }, 30_000);
+
+  it("pulls the header_4 block back as an H4 markdown heading", async () => {
+    await pull(filePath, client, syncConfig(), syncOptions());
+    const md = fs.readFileSync(filePath, "utf-8");
+    expect(md).toContain("#### level 4 headline");
+    // It must not degrade to H3 (the pre-fix behaviour).
+    expect(md).not.toMatch(/^### level 4 headline$/m);
+  }, 30_000);
+});

@@ -329,7 +329,9 @@ function phrasingNodeToDec(
 function headingType(depth: number): string {
   if (depth === 1) return "header";
   if (depth === 2) return "sub_header";
-  return "sub_sub_header";
+  if (depth === 3) return "sub_sub_header";
+  // Notion's deepest native heading is H4 (`header_4`); clamp H5/H6 to it.
+  return "header_4";
 }
 
 function titleProp(decs: Decoration[]): Record<string, unknown> {

@@ -125,6 +125,11 @@ function renderBlock(
       lines.push("");
       break;
 
+    case "header_4":
+      lines.push(`#### ${title()}`);
+      lines.push("");
+      break;
+
     case "bulleted_list":
       lines.push(`${prefix}- ${title()}`);
       renderChildren(block, recordMap, lines, indent + 1);
