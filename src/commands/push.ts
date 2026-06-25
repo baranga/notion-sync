@@ -2,7 +2,8 @@ import fs from "node:fs";
 import type { NotionAPI } from "notion-client";
 import type { Block, ExtendedRecordMap } from "notion-types";
 import { getBlockValue } from "notion-utils";
-import { parseFrontmatter } from "../lib/frontmatter.js";
+import { prompt } from "../lib/prompt.js";
+import { parseFrontmatter, stringifyFrontmatter } from "../lib/frontmatter.js";
 import { extractPageId } from "../lib/id.js";
 import { fetchPage, submitTransaction } from "../lib/notion.js";
 import { markdownToBlocks } from "../lib/md-to-blocks.js";
@@ -10,7 +11,7 @@ import { buildReplaceOperations, buildDiffOperations } from "../lib/blocks.js";
 import { extractBlocks } from "../lib/recordmap-to-blocks.js";
 import { recordMapToMarkdown, recordMapToTitle } from "../lib/recordmap-to-md.js";
 import { readShadow, writeShadow } from "../lib/shadow.js";
-import type { SyncConfig, SyncOptions } from "../types.js";
+import type { FileFrontmatter, SyncConfig, SyncOptions } from "../types.js";
 
 function getPageInfo(
   recordMap: ExtendedRecordMap,
@@ -44,6 +45,42 @@ function countBlocks(blocks: { children?: unknown[] }[]): number {
   return count;
 }
 
+/**
+ * No page reference in frontmatter (e.g. a brand-new local file). Prompt for a
+ * Notion URL or ID, validate it, and persist it back into the file's
+ * frontmatter so subsequent pushes are non-interactive. Returns the raw input
+ * the user gave (URL or ID), which `extractPageId` then normalizes.
+ */
+async function promptForPageRef(
+  filePath: string,
+  data: FileFrontmatter,
+  content: string,
+  options: SyncOptions,
+): Promise<string> {
+  console.error(`${filePath}: no notion_url or notion_id in frontmatter.`);
+  const answer = await prompt("Enter the Notion page URL or ID: ");
+  if (!answer) {
+    throw new Error(`${filePath}: no Notion page URL or ID provided`);
+  }
+
+  // Validate before persisting so we never write an unusable reference.
+  extractPageId(answer);
+
+  const key = /^https?:\/\//i.test(answer) ? "notion_url" : "notion_id";
+  data[key] = answer;
+
+  if (options.dryRun) {
+    console.error(
+      `[dry-run] Would record ${key} in ${filePath}'s frontmatter`,
+    );
+  } else {
+    fs.writeFileSync(filePath, stringifyFrontmatter(data, content));
+    console.error(`Recorded ${key} in ${filePath}'s frontmatter`);
+  }
+
+  return answer;
+}
+
 export async function push(
   filePath: string,
   readClient: NotionAPI,
@@ -53,11 +90,11 @@ export async function push(
   const raw = fs.readFileSync(filePath, "utf-8");
   const { data, content } = parseFrontmatter(raw);
 
-  const input = data.notion_url ?? data.notion_id;
+  let input = data.notion_url ?? data.notion_id;
   if (!input) {
-    throw new Error(
-      `${filePath}: frontmatter missing notion_url or notion_id`,
-    );
+    // promptForPageRef mutates `data` in place with the new page reference, so
+    // the shadow we write below (built from `data`) already carries it.
+    input = await promptForPageRef(filePath, data, content, options);
   }
 
   const pageId = extractPageId(input);
