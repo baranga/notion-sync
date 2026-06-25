@@ -22,7 +22,8 @@ dist/
 # Notion sync shadow files
 .notion-sync/
 
-# Test env (contains tokens)
+# env files (contain tokens)
+.env
 .env.test
 
 .claude
