@@ -9,7 +9,12 @@ interface ConfigFile {
   mergeTool?: string;
 }
 
-const HOME_CONFIG_PATH = path.join(os.homedir(), ".notion-sync.json");
+const XDG_CONFIG_HOME =
+  process.env["XDG_CONFIG_HOME"] || path.join(os.homedir(), ".config");
+const CONFIG_DIR = path.join(XDG_CONFIG_HOME, "notion-sync");
+const HOME_CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
+// Legacy location, read for backward compatibility but no longer written to.
+const LEGACY_HOME_CONFIG_PATH = path.join(os.homedir(), ".notion-sync.json");
 const LOCAL_CONFIG_PATH = path.join(process.cwd(), ".notion-sync.json");
 
 const TOKEN_INSTRUCTIONS = `
@@ -29,7 +34,8 @@ function readJsonFile(filePath: string): ConfigFile | null {
 }
 
 export function loadConfig(): SyncConfig | null {
-  const homeConfig = readJsonFile(HOME_CONFIG_PATH);
+  const homeConfig =
+    readJsonFile(HOME_CONFIG_PATH) ?? readJsonFile(LEGACY_HOME_CONFIG_PATH);
   const localConfig = readJsonFile(LOCAL_CONFIG_PATH);
   const mergeTool = localConfig?.mergeTool ?? homeConfig?.mergeTool;
 
@@ -50,14 +56,11 @@ export function loadConfig(): SyncConfig | null {
 }
 
 export function saveTokenToHomeConfig(tokenV2: string): void {
-  let existing: ConfigFile = {};
-  try {
-    const raw = fs.readFileSync(HOME_CONFIG_PATH, "utf-8");
-    existing = JSON.parse(raw) as ConfigFile;
-  } catch {
-    // file doesn't exist or invalid — start fresh
-  }
+  // Preserve any existing settings, migrating from the legacy path if needed.
+  const existing =
+    readJsonFile(HOME_CONFIG_PATH) ?? readJsonFile(LEGACY_HOME_CONFIG_PATH) ?? {};
   existing.tokenV2 = tokenV2;
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
   fs.writeFileSync(HOME_CONFIG_PATH, JSON.stringify(existing, null, 2) + "\n");
 }
 
