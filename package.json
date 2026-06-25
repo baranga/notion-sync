@@ -2,6 +2,7 @@
   "name": "notion-sync",
   "version": "0.1.0",
   "type": "module",
+  "license": "MIT",
   "packageManager": "yarn@4.10.3",
   "bin": "./dist/cli.js",
   "scripts": {

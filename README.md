@@ -94,3 +94,7 @@ yarn test                          # run tests
 
 - **Unit tests** (`test/diff.test.ts`) — block fingerprinting, change detection, LCS matching, comment mark transplantation
 - **E2E tests** (`test/e2e.test.ts`) — full pull/edit/push cycle verifying comment preservation (requires `NOTION_TOKEN_V2` and `NOTION_TEST_PAGE` env vars)
+
+## License
+
+[MIT](LICENSE)
