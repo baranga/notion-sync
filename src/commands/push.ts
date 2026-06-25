@@ -34,6 +34,19 @@ function getPageInfo(
   return { childIds, spaceId };
 }
 
+/**
+ * Render a page's body exactly as pull writes it to disk and to the shadow:
+ * the title as a leading `# title` H1 (which recordMapToMarkdown, content
+ * blocks only, does not include) followed by the rendered content blocks.
+ * Push and pull must agree on this canonical form so the shadow they store is
+ * directly comparable to the collision check's freshly-fetched `remoteBody`.
+ */
+function renderRemoteBody(recordMap: ExtendedRecordMap, pageId: string): string {
+  const title = recordMapToTitle(recordMap, pageId);
+  const bodyBlocks = recordMapToMarkdown(recordMap, pageId);
+  return title ? `# ${title}\n\n${bodyBlocks}` : bodyBlocks;
+}
+
 function countBlocks(blocks: { children?: unknown[] }[]): number {
   let count = 0;
   for (const b of blocks) {
@@ -127,15 +140,7 @@ export async function push(
     const shadow = readShadow(filePath);
     if (shadow) {
       const baseBody = parseFrontmatter(shadow).content;
-      // Reconstruct the remote body exactly as pull writes it to the shadow:
-      // the page title is rendered as a leading `# title` H1, which
-      // recordMapToMarkdown (content blocks only) does not include. Comparing
-      // without it makes every titled page look "changed" since last sync.
-      const remoteTitle = recordMapToTitle(recordMap, pageId);
-      const remoteBodyBlocks = recordMapToMarkdown(recordMap, pageId);
-      const remoteBody = remoteTitle
-        ? `# ${remoteTitle}\n\n${remoteBodyBlocks}`
-        : remoteBodyBlocks;
+      const remoteBody = renderRemoteBody(recordMap, pageId);
       if (remoteBody !== baseBody) {
         throw new Error(
           `${filePath}: remote has changed since last sync. Pull first, or use --force to overwrite.`,
@@ -171,6 +176,15 @@ export async function push(
 
   await submitTransaction(config.tokenV2, spaceId, ops);
 
-  writeShadow(filePath, raw);
+  // Record the shadow as the *canonical remote rendering* of the page we just
+  // wrote — not the local `raw` bytes. The next push's collision check compares
+  // against a freshly-fetched `remoteBody` produced by recordMapToMarkdown; the
+  // Markdown→Notion→Markdown round-trip is not byte-identical (Notion normalizes
+  // list markers, whitespace, escaping, toggles…), so storing `raw` makes the
+  // very next push falsely report "remote has changed". Re-fetch post-transaction
+  // and store the same form pull does, keeping the merge base symmetric.
+  const after = await fetchPage(readClient, pageId);
+  const shadowBody = renderRemoteBody(after, pageId);
+  writeShadow(filePath, stringifyFrontmatter(data, shadowBody));
   console.log(`Pushed: ${filePath} (${totalBlocks} blocks)`);
 }
