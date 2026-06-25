@@ -44,10 +44,10 @@ Content here...
 Fetch Notion page content into local Markdown files:
 
 ```bash
-notion-sync sync pull docs/*.md
-notion-sync sync pull docs/*.md --dry-run   # preview only
-notion-sync sync pull docs/*.md --force     # overwrite local, skip merge
-notion-sync sync pull docs/*.md --verbose
+notion-sync pull docs/*.md
+notion-sync pull docs/*.md --dry-run   # preview only
+notion-sync pull docs/*.md --force     # overwrite local, skip merge
+notion-sync pull docs/*.md --verbose
 ```
 
 ### Push
@@ -55,10 +55,10 @@ notion-sync sync pull docs/*.md --verbose
 Push local Markdown changes to Notion:
 
 ```bash
-notion-sync sync push docs/*.md
-notion-sync sync push docs/*.md --dry-run   # preview only
-notion-sync sync push docs/*.md --force     # overwrite remote, skip change check
-notion-sync sync push docs/*.md --verbose
+notion-sync push docs/*.md
+notion-sync push docs/*.md --dry-run   # preview only
+notion-sync push docs/*.md --force     # overwrite remote, skip change check
+notion-sync push docs/*.md --verbose
 ```
 
 ## How it works
@@ -75,7 +75,7 @@ Optional `.notion-sync.json`:
 
 ```json
 {
-  "token_v2": "...",
+  "tokenV2": "...",
   "mergeTool": "meld $LOCAL $REMOTE $MERGED"
 }
 ```
@@ -85,9 +85,9 @@ The `mergeTool` field supports `$BASE`, `$LOCAL`, `$REMOTE`, and `$MERGED` place
 ## Development
 
 ```bash
-yarn dev -- sync pull docs/*.md   # run without building
-yarn typecheck                     # type check
-yarn test                          # run tests
+yarn dev pull docs/*.md   # run without building
+yarn typecheck            # type check
+yarn test                 # run tests
 ```
 
 ## Tests

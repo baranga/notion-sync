@@ -25,15 +25,24 @@ E2E tests require `NOTION_TOKEN_V2` and `NOTION_TEST_PAGE` env vars (loaded from
 
 **Push:** Local Markdown → parse to BlockRecords → diff against existing Notion blocks (LCS matching) → submit minimal transaction operations → update shadow.
 
+### Entry Point & Commands
+
+- **`src/cli.ts`** — Commander entry point. Registers two top-level commands, `pull` and `push` (note: invoked as `notion-sync pull ...`, there is no `sync` subcommand). Resolves glob patterns, loads config, and wraps each file in `withRetry`, which catches `StaleTokenError` and re-prompts for a fresh token once.
+- **`src/commands/pull.ts`** / **`src/commands/push.ts`** — Per-file orchestration of the sync flows below. These own the high-level sequencing; `src/lib/` holds the reusable engine.
+- **`src/types.ts`** — Shared types: `SyncConfig`, `FileFrontmatter` (`notion_url` / `notion_id`), `SyncOptions` (`dryRun`, `verbose`, `force`).
+
 ### Key Modules (`src/lib/`)
 
 - **`diff.ts`** — Core diffing engine. Two-phase LCS block matching (exact fingerprint → type+position fallback). Comment mark transplantation extracts `["m", discussionId]` decorations from old blocks and re-injects them into matched new blocks. Strips Notion-only decoration formats (highlights, mentions, page links) for comparison.
-- **`blocks.ts`** — Builds Notion API transaction operations from diffs. Diff-based mode updates only changed blocks; full-replace mode used with `--force`.
+- **`blocks.ts`** — Builds Notion API transaction operations from diffs. Defines `BlockRecord`. Diff-based mode (`buildDiffOperations`) updates only changed blocks; full-replace mode (`buildReplaceOperations`) used with `--force`.
 - **`merge.ts`** — Three-way merge using node-diff3. Supports external merge tool via config (`$BASE`, `$LOCAL`, `$REMOTE`, `$MERGED` placeholders).
 - **`shadow.ts`** — Manages `.notion-sync/shadow/` files tracking last-synced state (merge base).
 - **`recordmap-to-md.ts`** / **`md-to-blocks.ts`** — Bidirectional conversion between Notion block trees and Markdown AST (via remark/unified with GFM).
-- **`notion.ts`** — Unofficial Notion API client wrapper with `StaleTokenError` detection.
-- **`config.ts`** — Token resolution: `NOTION_TOKEN_V2` env → `~/.notion-sync.json` → `./.notion-sync.json`.
+- **`recordmap-to-blocks.ts`** — Extracts `BlockRecord[]` from a Notion `ExtendedRecordMap`, preserving real Notion block IDs (the IDs that keep comment threads alive across pushes).
+- **`frontmatter.ts`** — Thin gray-matter wrapper (`parseFrontmatter` / `stringifyFrontmatter`). The page title lives as the H1 in the body, not in frontmatter.
+- **`id.ts`** — `extractPageId`: normalizes a UUID, bare 32-char hex, or Notion URL into a dashed page UUID.
+- **`notion.ts`** — Unofficial Notion API client wrapper (`createReadClient`, `fetchPage`, `submitTransaction`) with `StaleTokenError` detection.
+- **`config.ts`** — Token resolution: `NOTION_TOKEN_V2` env → `~/.notion-sync.json` → `./.notion-sync.json`. Config files use the camelCase key `tokenV2` (and optional `mergeTool`). Interactively prompts for and persists a token when missing or stale.
 
 ### Block Matching & Comment Preservation
 
@@ -45,4 +54,4 @@ Blocks have decoration arrays for rich text: `[["text", [["b"], ["i"]]]]` means 
 
 ## Testing
 
-Unit tests in `test/diff.test.ts` cover block fingerprinting, LCS matching, comment transplantation, and decoration normalization. E2E tests in `test/e2e.test.ts` run a full pull→edit→push cycle against a real Notion page and verify comment preservation. Set `KEEP_TEST_PAGE=1` to skip cleanup.
+Unit tests in `test/diff.test.ts` cover block fingerprinting, LCS matching, comment transplantation, and decoration normalization. E2E tests in `test/e2e.test.ts` run a full pull→edit→push cycle against a real Notion page and verify comment preservation. Set `KEEP_TEST_PAGE=1` to skip cleanup. `vitest.config.ts` loads `.env.test` into `process.env` before tests run.
