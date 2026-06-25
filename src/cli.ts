@@ -41,14 +41,12 @@ async function withRetry<T>(
   }
 }
 
-const sync = program
+program
   .name("notion-sync")
   .version("0.1.0")
-  .description("Sync local Markdown files with Notion pages")
-  .command("sync")
-  .description("Sync markdown files with Notion");
+  .description("Sync local Markdown files with Notion pages");
 
-sync
+program
   .command("pull")
   .description("Pull Notion page content into local markdown files")
   .argument("<files...>", "Markdown file paths or glob patterns")
@@ -82,7 +80,7 @@ sync
     if (failed) process.exit(1);
   });
 
-sync
+program
   .command("push")
   .description("Push local markdown file content to Notion pages")
   .argument("<files...>", "Markdown file paths or glob patterns")
