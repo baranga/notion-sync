@@ -207,10 +207,51 @@ function injectMark(
 }
 
 /**
+ * Locate where a commented span should re-anchor in the new plain text.
+ * Returns a `[start, length]` range, or `null` when the new text is empty
+ * (nothing left to anchor to).
+ *
+ * Strategy, in order of preference:
+ *  1. Exact substring match near the original offset (the commented text was
+ *     not itself edited — e.g. a comment on "number" while "three" changed).
+ *  2. Exact substring match anywhere in the new text (the span moved).
+ *  3. Positional fallback: clamp the original character range to the new text
+ *     length. This keeps the comment alive — re-anchored to roughly the same
+ *     region — when the commented text itself was edited (the common case for
+ *     a whole-paragraph comment, where any edit changes the marked substring).
+ *
+ * Dropping the mark is avoided whenever the block still has text, because a
+ * lost `["m"]` anchor causes Notion to discard the entire discussion thread.
+ */
+function anchorRange(
+  mark: CommentMark,
+  newPlain: string,
+): [number, number] | null {
+  if (newPlain.length === 0) return null;
+
+  const { text, start } = mark;
+
+  // 1 + 2: exact substring match (near the original offset, then anywhere)
+  if (text.length > 0) {
+    const near = newPlain.indexOf(text, Math.max(0, start - text.length));
+    if (near !== -1) return [near, text.length];
+    const anywhere = newPlain.indexOf(text);
+    if (anywhere !== -1) return [anywhere, text.length];
+  }
+
+  // 3: positional fallback — clamp the original range into the new text.
+  const clampedStart = Math.min(start, newPlain.length - 1);
+  const desiredLen = Math.max(1, text.length);
+  const clampedLen = Math.min(desiredLen, newPlain.length - clampedStart);
+  return [Math.max(0, clampedStart), Math.max(1, clampedLen)];
+}
+
+/**
  * Given old and new Decoration[] for a block title, transplant `["m", id]`
- * comment marks from the old into the new wherever the commented text can
- * be located in the new plain text (exact substring match, first occurrence
- * from the original position).
+ * comment marks from the old into the new. Marks re-anchor to the exact
+ * commented text where it still exists, and otherwise fall back to the same
+ * character range (see {@link anchorRange}) so a comment is never silently
+ * dropped while the block still has text.
  *
  * Returns the new Decoration[] with marks re-attached — or the original
  * newTitle unchanged if there are no marks to transplant.
@@ -225,23 +266,12 @@ export function transplantCommentMarks(
   const newPlain = newTitle.map((d) => String(d[0])).join("");
   let result = newTitle;
 
-  for (const { text, discussionId, start } of marks) {
-    // Search for the commented text near its original position
-    // Try exact position first, then scan outward
-    let found = -1;
-    const idx = newPlain.indexOf(text, Math.max(0, start - text.length));
-    if (idx !== -1) {
-      found = idx;
-    } else {
-      // Try from the beginning as fallback
-      const fallback = newPlain.indexOf(text);
-      if (fallback !== -1) found = fallback;
+  for (const mark of marks) {
+    const range = anchorRange(mark, newPlain);
+    if (range) {
+      result = injectMark(result, range[0], range[1], ["m", mark.discussionId]);
     }
-
-    if (found !== -1) {
-      result = injectMark(result, found, text.length, ["m", discussionId]);
-    }
-    // If text not found, the commented content was deleted — drop the mark
+    // range === null only when the new text is empty — nothing to anchor to.
   }
 
   return result;

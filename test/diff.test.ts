@@ -277,12 +277,45 @@ describe("transplantCommentMarks", () => {
     expect(result).toEqual([["Hello", [["m", "disc-1"]]], [" world"]]);
   });
 
-  it("drops mark when commented text is deleted", () => {
+  it("re-anchors mark positionally when commented text is edited", () => {
+    // The commented substring "Hello" no longer appears verbatim. Rather than
+    // dropping the mark (which makes Notion discard the whole discussion), it
+    // re-anchors to the same character range so the comment survives the edit.
     const oldTitle: unknown[][] = [["Hello", [["m", "disc-1"]]], [" world"]];
     const newTitle: unknown[][] = [["Goodbye world"]];
     const result = transplantCommentMarks(oldTitle, newTitle);
-    // "Hello" not found → mark dropped
-    expect(result).toEqual([["Goodbye world"]]);
+    // Text content is unchanged...
+    expect(result.map((d) => String(d[0])).join("")).toBe("Goodbye world");
+    // ...and the discussion id is still present somewhere in the title.
+    const mIds = result.flatMap((d) =>
+      Array.isArray(d[1]) ? (d[1] as unknown[][]) : [],
+    )
+      .filter((f) => f[0] === "m")
+      .map((f) => f[1]);
+    expect(mIds).toContain("disc-1");
+  });
+
+  it("re-anchors a whole-text comment when the whole text is edited", () => {
+    // A comment spanning the entire paragraph — the user's reproduction case.
+    // Any edit changes the marked substring, so exact matching always fails;
+    // the mark must still survive.
+    const oldTitle: unknown[][] = [["paragraph number one", [["m", "disc-1"]]]];
+    const newTitle: unknown[][] = [["paragraph number ONE"]];
+    const result = transplantCommentMarks(oldTitle, newTitle);
+    expect(result.map((d) => String(d[0])).join("")).toBe("paragraph number ONE");
+    const mIds = result.flatMap((d) =>
+      Array.isArray(d[1]) ? (d[1] as unknown[][]) : [],
+    )
+      .filter((f) => f[0] === "m")
+      .map((f) => f[1]);
+    expect(mIds).toContain("disc-1");
+  });
+
+  it("drops mark only when the new text is empty", () => {
+    const oldTitle: unknown[][] = [["Hello", [["m", "disc-1"]]]];
+    const newTitle: unknown[][] = [[""]];
+    const result = transplantCommentMarks(oldTitle, newTitle);
+    expect(result).toEqual([[""]]);
   });
 
   it("preserves existing formatting on new title", () => {
