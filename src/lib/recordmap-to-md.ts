@@ -1,6 +1,21 @@
 import type { ExtendedRecordMap, Block, Decoration } from "notion-types";
 import { getBlockValue } from "notion-utils";
 
+/**
+ * Extract a page's plain-text title from its block record, or undefined when
+ * the page has none. Pull renders this as a leading `# title` H1; push must
+ * reconstruct the body identically when comparing against the shadow.
+ */
+export function recordMapToTitle(
+  recordMap: ExtendedRecordMap,
+  pageId: string,
+): string | undefined {
+  const pageBlock = getBlockValue(recordMap.block[pageId]) as Block | undefined;
+  const titleDecs = pageBlock?.properties?.title;
+  if (!titleDecs || !Array.isArray(titleDecs)) return undefined;
+  return titleDecs.map((d: unknown[]) => String(d[0])).join("");
+}
+
 export function recordMapToMarkdown(
   recordMap: ExtendedRecordMap,
   pageId: string,

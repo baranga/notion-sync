@@ -8,7 +8,7 @@ import { fetchPage, submitTransaction } from "../lib/notion.js";
 import { markdownToBlocks } from "../lib/md-to-blocks.js";
 import { buildReplaceOperations, buildDiffOperations } from "../lib/blocks.js";
 import { extractBlocks } from "../lib/recordmap-to-blocks.js";
-import { recordMapToMarkdown } from "../lib/recordmap-to-md.js";
+import { recordMapToMarkdown, recordMapToTitle } from "../lib/recordmap-to-md.js";
 import { readShadow, writeShadow } from "../lib/shadow.js";
 import type { SyncConfig, SyncOptions } from "../types.js";
 
@@ -90,7 +90,15 @@ export async function push(
     const shadow = readShadow(filePath);
     if (shadow) {
       const baseBody = parseFrontmatter(shadow).content;
-      const remoteBody = recordMapToMarkdown(recordMap, pageId);
+      // Reconstruct the remote body exactly as pull writes it to the shadow:
+      // the page title is rendered as a leading `# title` H1, which
+      // recordMapToMarkdown (content blocks only) does not include. Comparing
+      // without it makes every titled page look "changed" since last sync.
+      const remoteTitle = recordMapToTitle(recordMap, pageId);
+      const remoteBodyBlocks = recordMapToMarkdown(recordMap, pageId);
+      const remoteBody = remoteTitle
+        ? `# ${remoteTitle}\n\n${remoteBodyBlocks}`
+        : remoteBodyBlocks;
       if (remoteBody !== baseBody) {
         throw new Error(
           `${filePath}: remote has changed since last sync. Pull first, or use --force to overwrite.`,
