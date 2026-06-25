@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import readline from "node:readline";
+import { prompt } from "./prompt.js";
 import type { SyncConfig } from "../types.js";
 
 interface ConfigFile {
@@ -47,19 +47,6 @@ export function loadConfig(): SyncConfig | null {
   }
 
   return null;
-}
-
-function prompt(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stderr,
-  });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
 }
 
 export function saveTokenToHomeConfig(tokenV2: string): void {
