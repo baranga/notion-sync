@@ -10,7 +10,22 @@ const parser = unified().use(remarkParse).use(remarkGfm);
 
 export function markdownToBlocks(markdown: string): BlockRecord[] {
   const tree = parser.parse(markdown) as Root;
-  return tree.children.flatMap(nodeToBlocks);
+  const blocks: BlockRecord[] = [];
+  let i = 0;
+  while (i < tree.children.length) {
+    const node = tree.children[i];
+    if (node.type === "html") {
+      const toggleResult = tryParseToggle(node, tree.children, i);
+      if (toggleResult) {
+        blocks.push(toggleResult.block);
+        i = toggleResult.nextIndex;
+        continue;
+      }
+    }
+    blocks.push(...nodeToBlocks(node));
+    i++;
+  }
+  return blocks;
 }
 
 function nodeToBlocks(node: RootContent): BlockRecord[] {
@@ -94,15 +109,9 @@ function nodeToBlocks(node: RootContent): BlockRecord[] {
       return [tableToBlock(node.children)];
 
     case "html": {
-      // Handle <details>/<summary> as toggle
-      const toggleMatch = node.value.match(
-        /<details>\s*<summary>(.*?)<\/summary>/s,
-      );
-      if (toggleMatch) {
-        return [
-          block("toggle", titleProp([[toggleMatch[1]]])),
-        ];
-      }
+      // Toggles are handled by tryParseToggle at the top level;
+      // standalone </details> tags consumed by toggle parsing can be ignored
+      if (node.value.trim() === "</details>") return [];
       // Other HTML — render as text
       return [block("text", titleProp([[node.value]]))];
     }
@@ -116,6 +125,85 @@ function nodeToBlocks(node: RootContent): BlockRecord[] {
       return [];
     }
   }
+}
+
+// --- Toggle (<details>/<summary>) ---
+
+function tryParseToggle(
+  node: RootContent,
+  siblings: RootContent[],
+  index: number,
+): { block: BlockRecord; nextIndex: number } | null {
+  if (node.type !== "html") return null;
+
+  const value = (node as { value: string }).value;
+  const toggleMatch = value.match(
+    /<details>\s*<summary>([\s\S]*?)<\/summary>([\s\S]*)/,
+  );
+  if (!toggleMatch) return null;
+
+  const summaryRaw = toggleMatch[1];
+  const afterSummary = toggleMatch[2];
+
+  // Parse summary text (handles both HTML tags and markdown formatting)
+  const titleDecs = parseSummaryContent(summaryRaw);
+
+  const children: BlockRecord[] = [];
+  let nextIndex = index + 1;
+
+  // Check if body content exists in the same HTML node (no blank line case)
+  const closingIdx = afterSummary.indexOf("</details>");
+  if (closingIdx !== -1) {
+    // Everything between </summary> and </details> is the body
+    const bodyText = afterSummary.slice(0, closingIdx).trim();
+    if (bodyText) {
+      children.push(...markdownToBlocks(bodyText));
+    }
+  } else {
+    // Body is in subsequent sibling nodes until </details>
+    while (nextIndex < siblings.length) {
+      const sibling = siblings[nextIndex];
+      if (
+        sibling.type === "html" &&
+        (sibling as { value: string }).value.trim() === "</details>"
+      ) {
+        nextIndex++;
+        break;
+      }
+      children.push(...nodeToBlocks(sibling));
+      nextIndex++;
+    }
+  }
+
+  const rec = block("toggle", titleProp(titleDecs));
+  if (children.length > 0) rec.children = children;
+  return { block: rec, nextIndex };
+}
+
+function parseSummaryContent(raw: string): Decoration[] {
+  // Convert HTML formatting tags to markdown equivalents so remark can parse them
+  const md = raw
+    .replace(/<strong>([\s\S]*?)<\/strong>/g, "**$1**")
+    .replace(/<b>([\s\S]*?)<\/b>/g, "**$1**")
+    .replace(/<em>([\s\S]*?)<\/em>/g, "*$1*")
+    .replace(/<i>([\s\S]*?)<\/i>/g, "*$1*")
+    .replace(/<del>([\s\S]*?)<\/del>/g, "~~$1~~")
+    .replace(/<s>([\s\S]*?)<\/s>/g, "~~$1~~")
+    .replace(/<code>([\s\S]*?)<\/code>/g, "`$1`")
+    .replace(/<a\s+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g, "[$2]($1)");
+
+  // Parse the converted string as markdown to extract decorations
+  const tree = parser.parse(md) as Root;
+  if (
+    tree.children.length > 0 &&
+    tree.children[0].type === "paragraph"
+  ) {
+    return phrasingToDecorations(
+      (tree.children[0] as { children: PhrasingContent[] }).children,
+    );
+  }
+  // Fallback: plain text
+  return [[raw]];
 }
 
 function blockquoteToBlocks(children: RootContent[]): BlockRecord[] {
