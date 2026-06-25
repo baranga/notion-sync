@@ -63,7 +63,17 @@ export async function push(
   const pageId = extractPageId(input);
   if (options.verbose) console.log(`  Page ID: ${pageId}`);
 
-  const blocks = markdownToBlocks(content);
+  const allBlocks = markdownToBlocks(content);
+
+  // First H1 is the page title — extract it from content blocks
+  let pageTitle: string | undefined;
+  let blocks = allBlocks;
+  if (allBlocks.length > 0 && allBlocks[0].type === "header") {
+    const titleDecs = allBlocks[0].properties?.title as [string, ...unknown[]][] | undefined;
+    pageTitle = titleDecs?.map((d) => d[0]).join("");
+    blocks = allBlocks.slice(1);
+  }
+
   const totalBlocks = countBlocks(blocks);
 
   if (options.dryRun) {
@@ -104,13 +114,13 @@ export async function push(
       ? buildDiffOperations(pageId, spaceId, existingBlocks, blocks)
       : buildReplaceOperations(pageId, spaceId, childIds, blocks);
 
-  // Update the page title from frontmatter
-  if (data.title) {
+  // Update the page title from the first H1
+  if (pageTitle) {
     ops.push({
       pointer: { table: "block", id: pageId, spaceId },
       path: ["properties", "title"],
       command: "set",
-      args: [[data.title]],
+      args: [[pageTitle]],
     });
   }
 

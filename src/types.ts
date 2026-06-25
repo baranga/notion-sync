@@ -7,7 +7,6 @@ export interface SyncConfig {
 export interface FileFrontmatter {
   notion_url?: string;
   notion_id?: string;
-  title?: string;
   [key: string]: unknown;
 }
 

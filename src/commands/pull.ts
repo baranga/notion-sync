@@ -46,9 +46,10 @@ export async function pull(
   const recordMap = await fetchPage(client, pageId);
 
   const title = getPageTitle(recordMap, pageId);
-  if (title) data.title = title;
+  delete data.title; // title lives as H1 in content, not frontmatter
 
-  const remoteBody = recordMapToMarkdown(recordMap, pageId);
+  const bodyFromBlocks = recordMapToMarkdown(recordMap, pageId);
+  const remoteBody = title ? `# ${title}\n\n${bodyFromBlocks}` : bodyFromBlocks;
   const remoteOutput = stringifyFrontmatter(data, remoteBody);
 
   if (options.dryRun) {
