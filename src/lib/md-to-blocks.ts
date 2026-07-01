@@ -53,6 +53,17 @@ function nodeToBlocks(node: RootContent): BlockRecord[] {
           }),
         ];
       }
+      // A standalone link to a Notion page is how a sub-page is rendered on
+      // pull. Sub-pages live in Notion as separate documents and are preserved
+      // there by the diff engine, so drop the link here rather than pushing it
+      // back as a stray text block that duplicates the real sub-page.
+      if (
+        node.children.length === 1 &&
+        node.children[0].type === "link" &&
+        isNotionPageUrl(node.children[0].url)
+      ) {
+        return [];
+      }
       return [
         block("text", titleProp(phrasingToDecorations(node.children))),
       ];
@@ -325,6 +336,19 @@ function phrasingNodeToDec(
 }
 
 // --- Helpers ---
+
+/**
+ * True for URLs that point at a Notion page — i.e. a `notion.so`/`notion.site`
+ * link whose path ends in a 32-character hex page id (with or without dashes,
+ * and with or without a leading title slug). This matches the sub-page links
+ * emitted by `recordMapToMarkdown`.
+ */
+function isNotionPageUrl(url: string): boolean {
+  const match = url.match(/(?:notion\.so|notion\.site)\/([^?#]+)/i);
+  if (!match) return false;
+  const slug = match[1].replace(/-/g, "");
+  return /[0-9a-f]{32}$/i.test(slug);
+}
 
 function headingType(depth: number): string {
   if (depth === 1) return "header";

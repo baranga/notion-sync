@@ -117,6 +117,10 @@ export function buildDiffOperations(
 
   // --- Deletions: mark unmatched old blocks as dead ---
   for (const oi of deletions) {
+    // Sub-pages are separate documents that can't be reconstructed from
+    // Markdown, so they never appear in the new block list. Deleting them here
+    // would destroy the child page (and its comment threads). Pin them instead.
+    if (isSubPage(oldBlocks[oi])) continue;
     deleteBlockOps(ops, oldBlocks[oi].id, pageId, spaceId);
   }
 
@@ -158,6 +162,14 @@ export function buildDiffOperations(
 }
 
 // --- Helpers -----------------------------------------------------------------
+
+/**
+ * Sub-pages (Notion `page` blocks) are standalone documents. They can't be
+ * reconstructed from the Markdown body, so the diff must never delete them.
+ */
+function isSubPage(block: BlockRecord): boolean {
+  return block.type === "page";
+}
 
 function deleteBlockOps(
   ops: Operation[],
@@ -269,9 +281,12 @@ function diffChildrenOps(
     return;
   }
 
-  // If the new block has no children, delete all old ones
+  // If the new block has no children, delete all old ones — except pinned
+  // sub-pages, which are left in place (and stay in the parent's content list
+  // because we don't emit a listRemove for them).
   if (newChildren.length === 0) {
     for (const child of oldChildren) {
+      if (isSubPage(child)) continue;
       deleteBlockOps(ops, child.id, oldParent.id, spaceId);
     }
     return;
@@ -281,6 +296,7 @@ function diffChildrenOps(
   const childMatch = matchBlocks(oldChildren, newChildren);
 
   for (const ci of childMatch.deletions) {
+    if (isSubPage(oldChildren[ci])) continue;
     deleteBlockOps(ops, oldChildren[ci].id, oldParent.id, spaceId);
   }
 
@@ -317,6 +333,15 @@ function rebuildContentOrder(
 ): void {
   const oldOrder = oldBlocks.map((b) => b.id);
   const newOrder = newBlocks.map((b) => b.id);
+
+  // Pinned sub-pages aren't present in the new (Markdown-derived) block list.
+  // Splice them back in at their original position so the content array keeps
+  // referencing them — otherwise the `set` below would orphan them off the page.
+  oldBlocks.forEach((b, oldIdx) => {
+    if (isSubPage(b) && !newOrder.includes(b.id)) {
+      newOrder.splice(Math.min(oldIdx, newOrder.length), 0, b.id);
+    }
+  });
 
   if (JSON.stringify(oldOrder) === JSON.stringify(newOrder)) return;
 
