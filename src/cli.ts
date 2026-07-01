@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { existsSync, statSync } from "node:fs";
 import { program } from "commander";
 import { glob } from "glob";
 import {
@@ -14,6 +15,12 @@ import type { SyncConfig, SyncOptions } from "./types.js";
 async function resolveFiles(patterns: string[]): Promise<string[]> {
   const files: string[] = [];
   for (const pattern of patterns) {
+    // Treat a pattern that names an existing file literally, so paths
+    // containing glob metacharacters (e.g. "entities_[id].md") still resolve.
+    if (existsSync(pattern) && statSync(pattern).isFile()) {
+      files.push(pattern);
+      continue;
+    }
     const matches = await glob(pattern, { nodir: true });
     files.push(...matches);
   }
