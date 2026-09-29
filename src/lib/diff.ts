@@ -108,18 +108,27 @@ export function needsUpdate(oldB: BlockRecord, newB: BlockRecord): boolean {
   );
 }
 
+/** Which top-level property keys differ (markdown-visible comparison only). */
+export function changedPropertyKeys(
+  oldB: BlockRecord,
+  newB: BlockRecord,
+): string[] {
+  if (!newB.properties) return [];
+  const changed: string[] = [];
+  for (const [key, val] of Object.entries(newB.properties)) {
+    const oldNorm = normalizeDecorations(oldB.properties?.[key]);
+    const newNorm = normalizeDecorations(val);
+    if (JSON.stringify(oldNorm) !== JSON.stringify(newNorm)) changed.push(key);
+  }
+  return changed;
+}
+
 /** True when markdown-visible properties differ. */
 export function propertiesChanged(
   oldB: BlockRecord,
   newB: BlockRecord,
 ): boolean {
-  if (!newB.properties) return false;
-  for (const [key, val] of Object.entries(newB.properties)) {
-    const oldNorm = normalizeDecorations(oldB.properties?.[key]);
-    const newNorm = normalizeDecorations(val);
-    if (JSON.stringify(oldNorm) !== JSON.stringify(newNorm)) return true;
-  }
-  return false;
+  return changedPropertyKeys(oldB, newB).length > 0;
 }
 
 /** True when markdown-visible format fields differ. */

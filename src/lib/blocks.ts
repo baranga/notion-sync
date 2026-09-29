@@ -2,7 +2,7 @@ import type { Operation } from "./notion.js";
 import {
   matchBlocks,
   needsUpdate,
-  propertiesChanged,
+  changedPropertyKeys,
   formatChanged,
   mergeCommentMarks,
 } from "./diff.js";
@@ -206,9 +206,6 @@ function updateBlockOps(
   if (oldB.type !== newB.type) {
     args.type = newB.type;
   }
-  if (propertiesChanged(oldB, newB)) {
-    args.properties = mergeCommentMarks(oldB.properties, newB.properties ?? {});
-  }
   if (formatChanged(oldB, newB)) {
     args.format = newB.format ?? {};
   }
@@ -219,6 +216,24 @@ function updateBlockOps(
     command: "update",
     args,
   });
+
+  // Property (block text) updates can no longer be bundled into the generic
+  // block `update` above — Notion now rejects a `properties` field on that op
+  // for blocks it has migrated to its CRDT text model, requiring instead one
+  // `updateBlockPropertyValue` op per changed key, with the old `set` wrapped
+  // as a `primitiveOp`.
+  const changedKeys = changedPropertyKeys(oldB, newB);
+  if (changedKeys.length > 0) {
+    const merged = mergeCommentMarks(oldB.properties, newB.properties ?? {});
+    for (const key of changedKeys) {
+      ops.push({
+        pointer: { table: "block", id: oldB.id, spaceId },
+        path: ["properties", key],
+        command: "updateBlockPropertyValue",
+        args: { primitiveOp: { command: "set", args: merged[key] } },
+      });
+    }
+  }
 }
 
 function createBlockOps(
