@@ -98,6 +98,22 @@ Optional `.notion-sync.json`:
 
 The `mergeTool` field supports `$BASE`, `$LOCAL`, `$REMOTE`, and `$MERGED` placeholders. The `diffTool` field supports `$LOCAL` and `$REMOTE` (`$BASE` too, once a shadow file exists).
 
+Rather than editing the file directly, you can manage these with the `config` subcommand:
+
+```bash
+notion-sync config set mergeTool 'meld $LOCAL $REMOTE $MERGED'
+notion-sync config set diffTool 'meld $LOCAL $REMOTE'
+notion-sync config get                # show all configurable values
+notion-sync config get diffTool       # show one value
+notion-sync config unset diffTool
+```
+
+By default these write to the home config (`~/.config/notion-sync/config.json`); pass `--local` to write to `./.notion-sync.json` in the current project instead:
+
+```bash
+notion-sync config set mergeTool 'meld $LOCAL $REMOTE $MERGED' --local
+```
+
 ## Development
 
 ```bash

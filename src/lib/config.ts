@@ -34,6 +34,62 @@ function readJsonFile(filePath: string): ConfigFile | null {
   }
 }
 
+// Settings adjustable via `notion-sync config`. tokenV2/userId are handled
+// separately by the `auth` command, since they go through a credential prompt.
+export const CONFIG_KEYS = ["mergeTool", "diffTool"] as const;
+export type ConfigKey = (typeof CONFIG_KEYS)[number];
+
+export function isConfigKey(key: string): key is ConfigKey {
+  return (CONFIG_KEYS as readonly string[]).includes(key);
+}
+
+function targetPath(target: "home" | "local"): string {
+  return target === "local" ? LOCAL_CONFIG_PATH : HOME_CONFIG_PATH;
+}
+
+function readTargetConfig(target: "home" | "local"): ConfigFile {
+  if (target === "local") return readJsonFile(LOCAL_CONFIG_PATH) ?? {};
+  return readJsonFile(HOME_CONFIG_PATH) ?? readJsonFile(LEGACY_HOME_CONFIG_PATH) ?? {};
+}
+
+export function setConfigValue(
+  key: ConfigKey,
+  value: string,
+  target: "home" | "local" = "home",
+): string {
+  const existing = readTargetConfig(target);
+  existing[key] = value;
+  if (target === "home") fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  const path = targetPath(target);
+  fs.writeFileSync(path, JSON.stringify(existing, null, 2) + "\n");
+  return path;
+}
+
+export function unsetConfigValue(
+  key: ConfigKey,
+  target: "home" | "local" = "home",
+): string {
+  const existing = readTargetConfig(target);
+  delete existing[key];
+  const path = targetPath(target);
+  if (target === "home") fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.writeFileSync(path, JSON.stringify(existing, null, 2) + "\n");
+  return path;
+}
+
+export function getConfigValue(
+  key: ConfigKey,
+): { value: string; source: "home" | "local" } | null {
+  const local = readJsonFile(LOCAL_CONFIG_PATH);
+  if (local?.[key]) return { value: local[key]!, source: "local" };
+
+  const home =
+    readJsonFile(HOME_CONFIG_PATH) ?? readJsonFile(LEGACY_HOME_CONFIG_PATH);
+  if (home?.[key]) return { value: home[key]!, source: "home" };
+
+  return null;
+}
+
 export function loadConfig(): SyncConfig | null {
   const homeConfig =
     readJsonFile(HOME_CONFIG_PATH) ?? readJsonFile(LEGACY_HOME_CONFIG_PATH);

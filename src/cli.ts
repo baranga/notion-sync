@@ -6,6 +6,11 @@ import {
   loadConfig,
   handleMissingToken,
   handleStaleToken,
+  CONFIG_KEYS,
+  isConfigKey,
+  getConfigValue,
+  setConfigValue,
+  unsetConfigValue,
 } from "./lib/config.js";
 import { createReadClient, StaleTokenError } from "./lib/notion.js";
 import { pull } from "./commands/pull.js";
@@ -167,6 +172,49 @@ program
       });
     }
     if (failed) process.exit(1);
+  });
+
+const configCommand = program
+  .command("config")
+  .description(`View or change settings (${CONFIG_KEYS.join(", ")})`);
+
+function requireConfigKey(key: string): asserts key is (typeof CONFIG_KEYS)[number] {
+  if (!isConfigKey(key)) {
+    console.error(`Unknown config key "${key}". Valid keys: ${CONFIG_KEYS.join(", ")}`);
+    process.exit(1);
+  }
+}
+
+configCommand
+  .command("get [key]")
+  .description("Print a config value, or all configurable values if no key is given")
+  .action((key?: string) => {
+    const keys = key ? [key] : [...CONFIG_KEYS];
+    for (const k of keys) {
+      requireConfigKey(k);
+      const result = getConfigValue(k);
+      console.log(result ? `${k}=${result.value} (${result.source})` : `${k} is not set`);
+    }
+  });
+
+configCommand
+  .command("set <key> <value>")
+  .description("Set a config value")
+  .option("--local", "Write to ./.notion-sync.json instead of the home config", false)
+  .action((key: string, value: string, opts: { local: boolean }) => {
+    requireConfigKey(key);
+    const path = setConfigValue(key, value, opts.local ? "local" : "home");
+    console.log(`Set ${key} in ${path}`);
+  });
+
+configCommand
+  .command("unset <key>")
+  .description("Remove a config value")
+  .option("--local", "Remove from ./.notion-sync.json instead of the home config", false)
+  .action((key: string, opts: { local: boolean }) => {
+    requireConfigKey(key);
+    const path = unsetConfigValue(key, opts.local ? "local" : "home");
+    console.log(`Removed ${key} from ${path}`);
   });
 
 program.parse();
