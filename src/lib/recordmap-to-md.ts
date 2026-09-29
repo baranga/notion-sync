@@ -16,6 +16,22 @@ export function recordMapToTitle(
   return titleDecs.map((d: unknown[]) => String(d[0])).join("");
 }
 
+/**
+ * Render a page's body exactly as pull writes it to disk and to the shadow:
+ * the title as a leading `# title` H1 (which recordMapToMarkdown, content
+ * blocks only, does not include) followed by the rendered content blocks.
+ * Push and pull must agree on this canonical form so the shadow they store is
+ * directly comparable to a freshly-fetched remote rendering.
+ */
+export function renderRemoteBody(
+  recordMap: ExtendedRecordMap,
+  pageId: string,
+): string {
+  const title = recordMapToTitle(recordMap, pageId);
+  const bodyBlocks = recordMapToMarkdown(recordMap, pageId);
+  return title ? `# ${title}\n\n${bodyBlocks}` : bodyBlocks;
+}
+
 export function recordMapToMarkdown(
   recordMap: ExtendedRecordMap,
   pageId: string,

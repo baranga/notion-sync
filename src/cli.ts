@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, statSync } from "node:fs";
-import { program } from "commander";
+import { program, Option } from "commander";
 import { glob } from "glob";
 import {
   loadConfig,
@@ -10,6 +10,7 @@ import {
 import { createReadClient, StaleTokenError } from "./lib/notion.js";
 import { pull } from "./commands/pull.js";
 import { push } from "./commands/push.js";
+import { diff, type DiffMode } from "./commands/diff.js";
 import type { SyncConfig, SyncOptions } from "./types.js";
 
 async function resolveFiles(patterns: string[]): Promise<string[]> {
@@ -109,6 +110,53 @@ program
         const client = createReadClient(conf);
         try {
           await push(file, client, conf, opts);
+        } catch (err) {
+          if (err instanceof StaleTokenError) throw err;
+          failed = true;
+          console.error(
+            `Error processing ${file}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      });
+    }
+    if (failed) process.exit(1);
+  });
+
+program
+  .command("diff")
+  .description("Show differences between local markdown files and their Notion pages")
+  .argument("<files...>", "Markdown file paths or glob patterns")
+  .option("--verbose", "Show detailed output", false)
+  .addOption(
+    new Option(
+      "--local",
+      "Show only local changes (local vs. the shadow/base) — requires the file to have been pulled/pushed before",
+    ).conflicts("remote"),
+  )
+  .addOption(
+    new Option(
+      "--remote",
+      "Show only remote changes (Notion vs. the shadow/base) — requires the file to have been pulled/pushed before",
+    ).conflicts("local"),
+  )
+  .action(async (filePatterns: string[], opts: { verbose: boolean; local?: boolean; remote?: boolean }) => {
+    const config = await getConfig();
+    const files = await resolveFiles(filePatterns);
+
+    if (files.length === 0) {
+      console.error("No files matched the given patterns.");
+      process.exit(1);
+    }
+
+    const options: SyncOptions = { dryRun: false, verbose: opts.verbose };
+    const mode: DiffMode = opts.local ? "local" : opts.remote ? "remote" : "both";
+
+    let failed = false;
+    for (const file of files) {
+      await withRetry(config, async (conf) => {
+        const client = createReadClient(conf);
+        try {
+          await diff(file, client, conf, options, mode);
         } catch (err) {
           if (err instanceof StaleTokenError) throw err;
           failed = true;

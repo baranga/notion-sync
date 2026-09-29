@@ -61,6 +61,21 @@ notion-sync push docs/*.md --force     # overwrite remote, skip change check
 notion-sync push docs/*.md --verbose
 ```
 
+### Diff
+
+Preview differences between local Markdown files and their Notion pages, without writing anything:
+
+```bash
+notion-sync diff docs/*.md             # three-way: local changes + remote changes
+notion-sync diff docs/*.md --local     # only local edits (local vs. base)
+notion-sync diff docs/*.md --remote    # only remote edits (Notion vs. base)
+notion-sync diff docs/*.md --verbose
+```
+
+If a shadow file exists (i.e. the page has been pulled/pushed before), this is a **three-way diff**: local and remote are each compared against the last-synced base, so the output separates local edits from remote edits instead of just showing local vs. remote directly. Pass `--local` or `--remote` to see just one side; both require a shadow file to diff against and error out if the page has never been pulled/pushed. Without a shadow file, the default (no `--local`/`--remote`) falls back to a plain local-vs-remote diff.
+
+If `diffTool` is set in the config, it's used to display differences instead of the built-in unified diff. By default it receives `$LOCAL` and `$REMOTE`, plus `$BASE` when a shadow file exists — a three-way-capable tool (e.g. `meld`) can use all three to show local/remote changes side by side. With `--local`/`--remote`, the tool is invoked as a plain two-way diff of that side against the base.
+
 ## How it works
 
 **Pull** fetches the Notion page, converts blocks to Markdown, and performs a three-way merge against the shadow file (last synced state). If both local and remote changed, it attempts automatic merge or falls back to conflict markers / an external merge tool.
@@ -76,11 +91,12 @@ Optional `.notion-sync.json`:
 ```json
 {
   "tokenV2": "...",
-  "mergeTool": "meld $LOCAL $REMOTE $MERGED"
+  "mergeTool": "meld $LOCAL $REMOTE $MERGED",
+  "diffTool": "meld $BASE $LOCAL $REMOTE"
 }
 ```
 
-The `mergeTool` field supports `$BASE`, `$LOCAL`, `$REMOTE`, and `$MERGED` placeholders.
+The `mergeTool` field supports `$BASE`, `$LOCAL`, `$REMOTE`, and `$MERGED` placeholders. The `diffTool` field supports `$LOCAL` and `$REMOTE` (`$BASE` too, once a shadow file exists).
 
 ## Development
 

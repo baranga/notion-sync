@@ -2,6 +2,7 @@ export interface SyncConfig {
   tokenV2: string;
   source: "env" | "home" | "local";
   mergeTool?: string;
+  diffTool?: string;
 }
 
 export interface FileFrontmatter {

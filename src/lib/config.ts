@@ -7,6 +7,7 @@ import type { SyncConfig } from "../types.js";
 interface ConfigFile {
   tokenV2?: string;
   mergeTool?: string;
+  diffTool?: string;
 }
 
 const XDG_CONFIG_HOME =
@@ -38,18 +39,19 @@ export function loadConfig(): SyncConfig | null {
     readJsonFile(HOME_CONFIG_PATH) ?? readJsonFile(LEGACY_HOME_CONFIG_PATH);
   const localConfig = readJsonFile(LOCAL_CONFIG_PATH);
   const mergeTool = localConfig?.mergeTool ?? homeConfig?.mergeTool;
+  const diffTool = localConfig?.diffTool ?? homeConfig?.diffTool;
 
   const envToken = process.env["NOTION_TOKEN_V2"];
   if (envToken) {
-    return { tokenV2: envToken, source: "env", mergeTool };
+    return { tokenV2: envToken, source: "env", mergeTool, diffTool };
   }
 
   if (homeConfig?.tokenV2) {
-    return { tokenV2: homeConfig.tokenV2, source: "home", mergeTool };
+    return { tokenV2: homeConfig.tokenV2, source: "home", mergeTool, diffTool };
   }
 
   if (localConfig?.tokenV2) {
-    return { tokenV2: localConfig.tokenV2, source: "local", mergeTool };
+    return { tokenV2: localConfig.tokenV2, source: "local", mergeTool, diffTool };
   }
 
   return null;

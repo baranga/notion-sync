@@ -9,7 +9,7 @@ import { fetchPage, submitTransaction } from "../lib/notion.js";
 import { markdownToBlocks } from "../lib/md-to-blocks.js";
 import { buildReplaceOperations, buildDiffOperations } from "../lib/blocks.js";
 import { extractBlocks } from "../lib/recordmap-to-blocks.js";
-import { recordMapToMarkdown, recordMapToTitle } from "../lib/recordmap-to-md.js";
+import { renderRemoteBody } from "../lib/recordmap-to-md.js";
 import { readShadow, writeShadow } from "../lib/shadow.js";
 import type { FileFrontmatter, SyncConfig, SyncOptions } from "../types.js";
 
@@ -32,19 +32,6 @@ function getPageInfo(
   }
 
   return { childIds, spaceId };
-}
-
-/**
- * Render a page's body exactly as pull writes it to disk and to the shadow:
- * the title as a leading `# title` H1 (which recordMapToMarkdown, content
- * blocks only, does not include) followed by the rendered content blocks.
- * Push and pull must agree on this canonical form so the shadow they store is
- * directly comparable to the collision check's freshly-fetched `remoteBody`.
- */
-function renderRemoteBody(recordMap: ExtendedRecordMap, pageId: string): string {
-  const title = recordMapToTitle(recordMap, pageId);
-  const bodyBlocks = recordMapToMarkdown(recordMap, pageId);
-  return title ? `# ${title}\n\n${bodyBlocks}` : bodyBlocks;
 }
 
 function countBlocks(blocks: { children?: unknown[] }[]): number {
