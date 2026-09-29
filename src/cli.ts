@@ -6,6 +6,7 @@ import {
   loadConfig,
   handleMissingToken,
   handleStaleToken,
+  setToken,
   CONFIG_KEYS,
   isConfigKey,
   getConfigValue,
@@ -48,7 +49,18 @@ async function withRetry<T>(
   } catch (err) {
     if (err instanceof StaleTokenError) {
       const newConfig = await handleStaleToken(config);
-      return fn(newConfig);
+      try {
+        return await fn(newConfig);
+      } catch (retryErr) {
+        if (retryErr instanceof StaleTokenError) {
+          throw new Error(
+            "Still getting an authentication/permission error after re-entering credentials " +
+              `(this usually means the account behind the token doesn't have access to the ` +
+              `page, not that the token itself is invalid). Underlying error: ${retryErr.cause ?? retryErr.message}`,
+          );
+        }
+        throw retryErr;
+      }
     }
     throw err;
   }
@@ -77,18 +89,17 @@ program
 
     let failed = false;
     for (const file of files) {
-      await withRetry(config, async (conf) => {
-        const client = createReadClient(conf);
-        try {
+      try {
+        await withRetry(config, async (conf) => {
+          const client = createReadClient(conf);
           await pull(file, client, conf, opts);
-        } catch (err) {
-          if (err instanceof StaleTokenError) throw err;
-          failed = true;
-          console.error(
-            `Error processing ${file}: ${err instanceof Error ? err.message : err}`,
-          );
-        }
-      });
+        });
+      } catch (err) {
+        failed = true;
+        console.error(
+          `Error processing ${file}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
     if (failed) process.exit(1);
   });
@@ -111,18 +122,17 @@ program
 
     let failed = false;
     for (const file of files) {
-      await withRetry(config, async (conf) => {
-        const client = createReadClient(conf);
-        try {
+      try {
+        await withRetry(config, async (conf) => {
+          const client = createReadClient(conf);
           await push(file, client, conf, opts);
-        } catch (err) {
-          if (err instanceof StaleTokenError) throw err;
-          failed = true;
-          console.error(
-            `Error processing ${file}: ${err instanceof Error ? err.message : err}`,
-          );
-        }
-      });
+        });
+      } catch (err) {
+        failed = true;
+        console.error(
+          `Error processing ${file}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
     if (failed) process.exit(1);
   });
@@ -158,20 +168,26 @@ program
 
     let failed = false;
     for (const file of files) {
-      await withRetry(config, async (conf) => {
-        const client = createReadClient(conf);
-        try {
+      try {
+        await withRetry(config, async (conf) => {
+          const client = createReadClient(conf);
           await diff(file, client, conf, options, mode);
-        } catch (err) {
-          if (err instanceof StaleTokenError) throw err;
-          failed = true;
-          console.error(
-            `Error processing ${file}: ${err instanceof Error ? err.message : err}`,
-          );
-        }
-      });
+        });
+      } catch (err) {
+        failed = true;
+        console.error(
+          `Error processing ${file}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
     if (failed) process.exit(1);
+  });
+
+program
+  .command("auth")
+  .description("Set or update your Notion token_v2 authentication cookie")
+  .action(async () => {
+    await setToken();
   });
 
 const configCommand = program

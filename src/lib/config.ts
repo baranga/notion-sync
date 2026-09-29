@@ -146,6 +146,27 @@ export async function handleMissingToken(): Promise<SyncConfig> {
   return { tokenV2: token, userId: userId || undefined, source: "home" };
 }
 
+export async function setToken(): Promise<void> {
+  console.error(TOKEN_INSTRUCTIONS);
+
+  const token = await prompt("Paste your token_v2 value: ");
+  if (!token) {
+    console.error("No token provided. Exiting.");
+    process.exit(1);
+  }
+  const userId = await prompt("Paste your notion_user_id value (leave blank if not applicable): ");
+
+  saveTokenToHomeConfig(token, userId || undefined);
+  console.error(`Token saved to ${HOME_CONFIG_PATH}`);
+
+  if (process.env["NOTION_TOKEN_V2"]) {
+    console.error(
+      "\nNote: the NOTION_TOKEN_V2 (and NOTION_USER_ID) environment variables are currently set " +
+        "and take precedence over the saved config. Update or unset them for the new values to take effect.",
+    );
+  }
+}
+
 export async function handleStaleToken(
   config: SyncConfig,
 ): Promise<SyncConfig> {
