@@ -1,5 +1,6 @@
 export interface SyncConfig {
   tokenV2: string;
+  userId?: string;
   source: "env" | "home" | "local";
   mergeTool?: string;
   diffTool?: string;

@@ -3,14 +3,18 @@ import type { ExtendedRecordMap } from "notion-types";
 import type { SyncConfig } from "../types.js";
 
 export class StaleTokenError extends Error {
-  constructor() {
-    super("Notion token_v2 is expired or invalid");
+  constructor(public readonly cause?: string) {
+    super(
+      cause
+        ? `Notion token_v2 is expired or invalid (or lacks access to this page): ${cause}`
+        : "Notion token_v2 is expired or invalid",
+    );
     this.name = "StaleTokenError";
   }
 }
 
 export function createReadClient(config: SyncConfig): NotionAPI {
-  return new NotionAPI({ authToken: config.tokenV2 });
+  return new NotionAPI({ authToken: config.tokenV2, activeUser: config.userId });
 }
 
 export async function fetchPage(
@@ -21,8 +25,20 @@ export async function fetchPage(
     return await client.getPage(pageId);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("401") || msg.includes("Unauthorized") || msg.includes("unauthorized")) {
-      throw new StaleTokenError();
+    const status = (err as { status?: number } | undefined)?.status;
+    const data = (err as { data?: unknown } | undefined)?.data;
+    if (
+      status === 401 ||
+      status === 403 ||
+      msg.includes("401") ||
+      msg.includes("403") ||
+      msg.includes("Unauthorized") ||
+      msg.includes("unauthorized") ||
+      msg.includes("Forbidden") ||
+      msg.includes("forbidden")
+    ) {
+      const detail = data ? `${msg} — response body: ${JSON.stringify(data)}` : msg;
+      throw new StaleTokenError(detail);
     }
     throw err;
   }
@@ -62,12 +78,11 @@ export async function submitTransaction(
     }),
   });
 
-  if (res.status === 401 || res.status === 403) {
-    throw new StaleTokenError();
-  }
-
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 401 || res.status === 403) {
+      throw new StaleTokenError(`${res.status}: ${body}`);
+    }
     throw new Error(`Notion API saveTransactionsFanout failed (${res.status}): ${body}`);
   }
 }

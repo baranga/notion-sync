@@ -6,6 +6,7 @@ import type { SyncConfig } from "../types.js";
 
 interface ConfigFile {
   tokenV2?: string;
+  userId?: string;
   mergeTool?: string;
   diffTool?: string;
 }
@@ -23,6 +24,11 @@ To get your token_v2 cookie:
   1. Open Notion in your browser and log in
   2. Open DevTools (F12) → Application → Cookies → https://www.notion.so
   3. Copy the value of the "token_v2" cookie
+
+If the page you're syncing belongs to a team workspace, also copy the
+"notion_user_id" cookie value (same Cookies panel). Without it, requests for
+team-workspace pages fail with 403 Forbidden even with a valid token_v2.
+Leave it blank if you only sync pages in your personal workspace.
 `;
 
 function readJsonFile(filePath: string): ConfigFile | null {
@@ -99,25 +105,27 @@ export function loadConfig(): SyncConfig | null {
 
   const envToken = process.env["NOTION_TOKEN_V2"];
   if (envToken) {
-    return { tokenV2: envToken, source: "env", mergeTool, diffTool };
+    const userId = process.env["NOTION_USER_ID"] ?? homeConfig?.userId ?? localConfig?.userId;
+    return { tokenV2: envToken, userId, source: "env", mergeTool, diffTool };
   }
 
   if (homeConfig?.tokenV2) {
-    return { tokenV2: homeConfig.tokenV2, source: "home", mergeTool, diffTool };
+    return { tokenV2: homeConfig.tokenV2, userId: homeConfig.userId, source: "home", mergeTool, diffTool };
   }
 
   if (localConfig?.tokenV2) {
-    return { tokenV2: localConfig.tokenV2, source: "local", mergeTool, diffTool };
+    return { tokenV2: localConfig.tokenV2, userId: localConfig.userId, source: "local", mergeTool, diffTool };
   }
 
   return null;
 }
 
-export function saveTokenToHomeConfig(tokenV2: string): void {
+export function saveTokenToHomeConfig(tokenV2: string, userId?: string): void {
   // Preserve any existing settings, migrating from the legacy path if needed.
   const existing =
     readJsonFile(HOME_CONFIG_PATH) ?? readJsonFile(LEGACY_HOME_CONFIG_PATH) ?? {};
   existing.tokenV2 = tokenV2;
+  if (userId) existing.userId = userId;
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   fs.writeFileSync(HOME_CONFIG_PATH, JSON.stringify(existing, null, 2) + "\n");
 }
@@ -131,10 +139,11 @@ export async function handleMissingToken(): Promise<SyncConfig> {
     console.error("No token provided. Exiting.");
     process.exit(1);
   }
+  const userId = await prompt("Paste your notion_user_id value (leave blank if not applicable): ");
 
-  saveTokenToHomeConfig(token);
+  saveTokenToHomeConfig(token, userId || undefined);
   console.error(`Token saved to ${HOME_CONFIG_PATH}\n`);
-  return { tokenV2: token, source: "home" };
+  return { tokenV2: token, userId: userId || undefined, source: "home" };
 }
 
 export async function handleStaleToken(
@@ -156,9 +165,13 @@ export async function handleStaleToken(
     console.error("No token provided. Exiting.");
     process.exit(1);
   }
+  const userIdInput = await prompt(
+    `Paste your notion_user_id value (leave blank to keep${config.userId ? " current" : " unset"}): `,
+  );
+  const userId = userIdInput || config.userId;
 
   const configPath = config.source === "home" ? HOME_CONFIG_PATH : LOCAL_CONFIG_PATH;
-  saveTokenToHomeConfig(token);
+  saveTokenToHomeConfig(token, userId);
   console.error(`Token updated in ${configPath}\n`);
-  return { tokenV2: token, source: config.source };
+  return { tokenV2: token, userId, source: config.source };
 }
