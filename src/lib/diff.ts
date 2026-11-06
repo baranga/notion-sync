@@ -61,9 +61,12 @@ function normalizeDecorations(val: unknown): unknown {
     if (dec.length <= 1) return dec;
     const formats = dec[1];
     if (!Array.isArray(formats)) return dec;
-    const kept = (formats as unknown[][]).filter(
-      (fmt) => !Array.isArray(fmt) || !NON_MARKDOWN_FORMATS.has(fmt[0] as string),
-    );
+    // Sort so that format order (e.g. link+code vs code+link) doesn't matter
+    const kept = (formats as unknown[][])
+      .filter(
+        (fmt) => !Array.isArray(fmt) || !NON_MARKDOWN_FORMATS.has(fmt[0] as string),
+      )
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     return kept.length > 0 ? [dec[0], kept] : [dec[0]];
   });
 

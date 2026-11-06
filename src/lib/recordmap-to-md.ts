@@ -66,8 +66,15 @@ function decorationToMarkdown(dec: Decoration): string {
 
   let result = text;
 
-  // Apply formatting inside-out
-  for (const fmt of formats) {
+  // Apply formatting inside-out in a canonical order, independent of the
+  // order Notion stores the marks in: code/equation innermost, then link, then
+  // emphasis (so `**[x](u)**` round-trips).
+  // Otherwise `[["a", url], ["c"]]` would render as `[code](url)` instead of
+  // [`code`](url) and cause spurious conflicts against the local file.
+  const ordered = [...formats].sort(
+    (a, b) => formatRank(a[0] as string) - formatRank(b[0] as string),
+  );
+  for (const fmt of ordered) {
     const tag = fmt[0] as string;
     switch (tag) {
       case "b":
@@ -107,6 +114,13 @@ function decorationToMarkdown(dec: Decoration): string {
   }
 
   return result;
+}
+
+const FORMAT_ORDER = ["c", "e", "a", "_", "s", "i", "b"];
+
+function formatRank(tag: string): number {
+  const i = FORMAT_ORDER.indexOf(tag);
+  return i === -1 ? FORMAT_ORDER.length : i;
 }
 
 // --- Block rendering ---
