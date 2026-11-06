@@ -35,7 +35,9 @@ E2E tests require `NOTION_TOKEN_V2` and `NOTION_TEST_PAGE` env vars (loaded from
 
 - **`diff.ts`** — Core diffing engine. Two-phase LCS block matching (exact fingerprint → type+position fallback). Comment mark transplantation extracts `["m", discussionId]` decorations from old blocks and re-injects them into matched new blocks. Strips Notion-only decoration formats (highlights, mentions, page links) for comparison.
 - **`blocks.ts`** — Builds Notion API transaction operations from diffs. Defines `BlockRecord`. Diff-based mode (`buildDiffOperations`) updates only changed blocks; full-replace mode (`buildReplaceOperations`) used with `--force`.
-- **`merge.ts`** — Three-way merge using node-diff3. Supports external merge tool via config (`$BASE`, `$LOCAL`, `$REMOTE`, `$MERGED` placeholders).
+- **`merge.ts`** — Three-way merge using node-diff3, with labelled (diff3-style when a base exists) conflict markers.
+- **`external-tool.ts`** — Launches `mergeTool`/`diffTool`: built-in presets (kdiff3, meld, vimdiff, code, bc, p4merge, smerge; modelled on git's mergetools) with pane titles, or custom shell commands (`$BASE`/`$LOCAL`/`$REMOTE`/`$MERGED` placeholders, `$*_LABEL` env vars).
+- **`sync-labels.ts`** — Builds the base/local/remote titles (file path, Notion page title, last-sync and last-edited times) used by markers and tools.
 - **`shadow.ts`** — Manages `.notion-sync/shadow/` files tracking last-synced state (merge base).
 - **`recordmap-to-md.ts`** / **`md-to-blocks.ts`** — Bidirectional conversion between Notion block trees and Markdown AST (via remark/unified with GFM).
 - **`recordmap-to-blocks.ts`** — Extracts `BlockRecord[]` from a Notion `ExtendedRecordMap`, preserving real Notion block IDs (the IDs that keep comment threads alive across pushes).

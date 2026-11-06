@@ -16,6 +16,15 @@ export function recordMapToTitle(
   return titleDecs.map((d: unknown[]) => String(d[0])).join("");
 }
 
+/** When the page was last edited in Notion, if the record map says. */
+export function recordMapLastEdited(
+  recordMap: ExtendedRecordMap,
+  pageId: string,
+): Date | undefined {
+  const pageBlock = getBlockValue(recordMap.block[pageId]) as Block | undefined;
+  return pageBlock?.last_edited_time ? new Date(pageBlock.last_edited_time) : undefined;
+}
+
 /**
  * Render a page's body exactly as pull writes it to disk and to the shadow:
  * the title as a leading `# title` H1 (which recordMapToMarkdown, content

@@ -6,7 +6,9 @@ import { extractPageId } from "../lib/id.js";
 import { fetchPage } from "../lib/notion.js";
 import { recordMapToMarkdown } from "../lib/recordmap-to-md.js";
 import { readShadow, writeShadow } from "../lib/shadow.js";
-import { threeWayMerge, invokeExternalTool } from "../lib/merge.js";
+import { threeWayMerge, hasConflictMarkers } from "../lib/merge.js";
+import { syncLabels } from "../lib/sync-labels.js";
+import { invokeMergeTool, toolName } from "../lib/external-tool.js";
 import type { SyncConfig, SyncOptions } from "../types.js";
 
 function getPageTitle(recordMap: ExtendedRecordMap, pageId: string): string | undefined {
@@ -90,11 +92,17 @@ export async function pull(
   const mergeKind = hasShadow ? "three-way" : "two-way";
   if (options.verbose) console.log(`  Both local and remote differ, ${mergeKind} merge…`);
 
-  const { content: mergedBody, hasConflicts } = threeWayMerge(baseBody, localBody, remoteBody);
+  const labels = syncLabels(filePath, recordMap, pageId);
+  const { content: mergedBody, hasConflicts, conflicts } = threeWayMerge(
+    baseBody,
+    localBody,
+    remoteBody,
+    { labels, showBase: hasShadow },
+  );
+  const mergedOutput = stringifyFrontmatter(data, mergedBody);
 
   if (!hasConflicts) {
-    const output = stringifyFrontmatter(data, mergedBody);
-    fs.writeFileSync(filePath, output, "utf-8");
+    fs.writeFileSync(filePath, mergedOutput, "utf-8");
     writeShadow(filePath, remoteOutput);
     console.log(`Merged: ${filePath}`);
     return;
@@ -102,28 +110,38 @@ export async function pull(
 
   // Conflicts — try external merge tool
   if (config.mergeTool) {
-    if (options.verbose) console.log(`  Invoking merge tool: ${config.mergeTool}`);
-
-    const result = invokeExternalTool(
-      config.mergeTool,
-      stringifyFrontmatter(data, baseBody),
-      raw,
-      remoteOutput,
+    const tool = toolName(config.mergeTool);
+    console.log(
+      `Conflicts: ${filePath} — ${conflicts} conflicting section${conflicts === 1 ? "" : "s"}, opening ${tool}…`,
     );
 
-    if (result !== null) {
-      fs.writeFileSync(filePath, result, "utf-8");
+    const outcome = invokeMergeTool(config.mergeTool, filePath, {
+      base: hasShadow ? { content: stringifyFrontmatter(data, baseBody), label: labels.base } : undefined,
+      local: { content: raw, label: labels.local },
+      remote: { content: remoteOutput, label: labels.remote },
+      merged: { content: mergedOutput, label: `merged: ${filePath}` },
+    });
+
+    if (outcome.status === "resolved") {
+      fs.writeFileSync(filePath, outcome.content, "utf-8");
       writeShadow(filePath, remoteOutput);
-      console.log(`Merged (external): ${filePath}`);
+      if (hasConflictMarkers(outcome.content)) {
+        console.warn(`Conflicts: ${filePath} — ${tool} left conflict markers, resolve manually`);
+      } else {
+        console.log(`Merged (external): ${filePath}`);
+      }
       return;
     }
 
-    console.warn(`  Merge tool exited with error, falling back to conflict markers`);
+    console.warn(
+      outcome.status === "unresolved"
+        ? `  ${tool} exited without saving a merge, falling back to conflict markers`
+        : `  ${tool} failed (${outcome.reason}), falling back to conflict markers`,
+    );
   }
 
   // No merge tool or tool failed — write conflict markers
-  const output = stringifyFrontmatter(data, mergedBody);
-  fs.writeFileSync(filePath, output, "utf-8");
+  fs.writeFileSync(filePath, mergedOutput, "utf-8");
   writeShadow(filePath, remoteOutput);
   console.warn(`Conflicts: ${filePath} — resolve manually`);
 }

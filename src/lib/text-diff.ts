@@ -1,7 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
-import { spawnSync } from "node:child_process";
 import { diffIndices } from "node-diff3";
 
 export interface DiffResult {
@@ -86,50 +82,4 @@ export function unifiedDiff(
     hasChanges: true,
     text: [`--- ${fromLabel}`, `+++ ${toLabel}`, ...hunks].join("\n"),
   };
-}
-
-/**
- * Show a diff by shelling out to an external tool (e.g. meld, vimdiff,
- * `code --diff`) instead of the built-in unified diff. Writes local/remote
- * (and, when available, base) content to temp files and substitutes
- * $LOCAL/$REMOTE/$BASE in the command. $BASE is only written and substituted
- * when `base` is given (i.e. a shadow file exists), so a two-way tool that
- * only references $LOCAL/$REMOTE keeps working unchanged; a three-way-capable
- * tool (meld, vimdiff -d, Beyond Compare) can use $BASE to distinguish local
- * edits from remote edits since the last sync.
- *
- * Unlike invokeExternalTool for merges, the exit code is ignored: many diff
- * tools (e.g. `diff`, `git diff --no-index`) exit non-zero simply to signal
- * that differences were found, not that the tool failed. Returns false only
- * if the command itself couldn't be launched.
- */
-export function invokeExternalDiffTool(
-  command: string,
-  local: string,
-  remote: string,
-  base?: string,
-): boolean {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "notion-sync-diff-"));
-  const localPath = path.join(tmpDir, "LOCAL.md");
-  const remotePath = path.join(tmpDir, "REMOTE.md");
-  const basePath = path.join(tmpDir, "BASE.md");
-
-  try {
-    fs.writeFileSync(localPath, local, "utf-8");
-    fs.writeFileSync(remotePath, remote, "utf-8");
-
-    let cmd = command
-      .replace(/\$LOCAL/g, localPath)
-      .replace(/\$REMOTE/g, remotePath);
-
-    if (base !== undefined) {
-      fs.writeFileSync(basePath, base, "utf-8");
-      cmd = cmd.replace(/\$BASE/g, basePath);
-    }
-
-    const result = spawnSync(cmd, { shell: true, stdio: "inherit" });
-    return result.error === undefined;
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
 }

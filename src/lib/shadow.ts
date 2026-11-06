@@ -22,3 +22,12 @@ export function writeShadow(filePath: string, content: string): void {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, content, "utf-8");
 }
+
+/** When the shadow was last written, i.e. the time of the last sync. */
+export function readShadowTime(filePath: string): Date | null {
+  try {
+    return fs.statSync(shadowPath(filePath)).mtime;
+  } catch {
+    return null;
+  }
+}

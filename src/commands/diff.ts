@@ -5,7 +5,9 @@ import { extractPageId } from "../lib/id.js";
 import { fetchPage } from "../lib/notion.js";
 import { renderRemoteBody } from "../lib/recordmap-to-md.js";
 import { readShadow } from "../lib/shadow.js";
-import { invokeExternalDiffTool, unifiedDiff } from "../lib/text-diff.js";
+import { unifiedDiff } from "../lib/text-diff.js";
+import { invokeDiffTool, type ToolInput } from "../lib/external-tool.js";
+import { syncLabels } from "../lib/sync-labels.js";
 import type { SyncConfig, SyncOptions } from "../types.js";
 
 /**
@@ -48,6 +50,9 @@ export async function diff(
 
   const recordMap = await fetchPage(client, pageId);
   const remoteBody = renderRemoteBody(recordMap, pageId);
+  const labels = syncLabels(filePath, recordMap, pageId);
+  const local: ToolInput = { content: localBody, label: labels.local, tag: "LOCAL" };
+  const remote: ToolInput = { content: remoteBody, label: labels.remote, tag: "REMOTE" };
 
   const shadow = readShadow(filePath);
   const baseBody = shadow ? parseFrontmatter(shadow).content : undefined;
@@ -77,7 +82,7 @@ export async function diff(
 
     if (config.diffTool) {
       if (options.verbose) console.log(`  Invoking diff tool: ${config.diffTool}`);
-      if (invokeExternalDiffTool(config.diffTool, localBody, remoteBody)) {
+      if (invokeDiffTool(config.diffTool, filePath, { local, remote })) {
         return true;
       }
       console.warn(`  Diff tool failed to launch, falling back to built-in diff`);
@@ -104,12 +109,15 @@ export async function diff(
   if (config.diffTool) {
     if (options.verbose) console.log(`  Invoking diff tool: ${config.diffTool}`);
 
+    // $LOCAL/$REMOTE are the left/right sides; --local/--remote put the base
+    // on the side it's being compared against.
+    const base: ToolInput = { content: baseBody, label: labels.base, tag: "BASE" };
     const ok =
       mode === "both"
-        ? invokeExternalDiffTool(config.diffTool, localBody, remoteBody, baseBody)
+        ? invokeDiffTool(config.diffTool, filePath, { local, remote, base })
         : mode === "local"
-          ? invokeExternalDiffTool(config.diffTool, localBody, baseBody)
-          : invokeExternalDiffTool(config.diffTool, baseBody, remoteBody);
+          ? invokeDiffTool(config.diffTool, filePath, { local, remote: base })
+          : invokeDiffTool(config.diffTool, filePath, { local: base, remote });
 
     if (ok) return true;
     console.warn(`  Diff tool failed to launch, falling back to built-in diff`);

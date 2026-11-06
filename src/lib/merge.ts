@@ -1,61 +1,53 @@
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
-import { execSync } from "node:child_process";
-import { merge } from "node-diff3";
+import { merge, mergeDiff3 } from "node-diff3";
 
 export interface MergeResult {
   content: string;
   hasConflicts: boolean;
+  /** Number of conflicting sections (conflict marker blocks) in `content`. */
+  conflicts: number;
 }
+
+export interface MergeLabels {
+  local: string;
+  base: string;
+  remote: string;
+}
+
+export interface MergeOptions {
+  /** Text after the conflict markers (single line each). */
+  labels?: MergeLabels;
+  /**
+   * diff3-style markers: include the base version in a `|||||||` section, so
+   * it's clear what each side changed. Pointless without a real base.
+   */
+  showBase?: boolean;
+}
+
+const DEFAULT_LABELS: MergeLabels = { local: "LOCAL", base: "BASE", remote: "REMOTE" };
 
 export function threeWayMerge(
   base: string,
   local: string,
   remote: string,
+  options: MergeOptions = {},
 ): MergeResult {
-  const result = merge(
+  const labels = options.labels ?? DEFAULT_LABELS;
+  const run = options.showBase ? mergeDiff3 : merge;
+  const result = run(
     local.split("\n"),
     base.split("\n"),
     remote.split("\n"),
-    { label: { a: "LOCAL", o: "BASE", b: "REMOTE" } } as Parameters<typeof merge>[3],
+    { label: { a: labels.local, o: labels.base, b: labels.remote } } as Parameters<typeof mergeDiff3>[3],
   );
+  const startMarker = `<<<<<<< ${labels.local}`;
   return {
     content: result.result.join("\n"),
     hasConflicts: result.conflict,
+    conflicts: result.result.filter((line) => line === startMarker).length,
   };
 }
 
-export function invokeExternalTool(
-  command: string,
-  base: string,
-  local: string,
-  remote: string,
-): string | null {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "notion-sync-merge-"));
-  const basePath = path.join(tmpDir, "BASE.md");
-  const localPath = path.join(tmpDir, "LOCAL.md");
-  const remotePath = path.join(tmpDir, "REMOTE.md");
-  const mergedPath = path.join(tmpDir, "MERGED.md");
-
-  try {
-    fs.writeFileSync(basePath, base, "utf-8");
-    fs.writeFileSync(localPath, local, "utf-8");
-    fs.writeFileSync(remotePath, remote, "utf-8");
-    fs.writeFileSync(mergedPath, local, "utf-8");
-
-    const cmd = command
-      .replace(/\$BASE/g, basePath)
-      .replace(/\$LOCAL/g, localPath)
-      .replace(/\$REMOTE/g, remotePath)
-      .replace(/\$MERGED/g, mergedPath);
-
-    execSync(cmd, { stdio: "inherit" });
-
-    return fs.readFileSync(mergedPath, "utf-8");
-  } catch {
-    return null;
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+/** Whether text still contains (start or end) conflict markers. */
+export function hasConflictMarkers(text: string): boolean {
+  return /^(<{7}|>{7})( |$)/m.test(text);
 }

@@ -74,7 +74,7 @@ notion-sync diff docs/*.md --verbose
 
 If a shadow file exists (i.e. the page has been pulled/pushed before), this is a **three-way diff**: local and remote are each compared against the last-synced base, so the output separates local edits from remote edits instead of just showing local vs. remote directly. Pass `--local` or `--remote` to see just one side; both require a shadow file to diff against and error out if the page has never been pulled/pushed. Without a shadow file, the default (no `--local`/`--remote`) falls back to a plain local-vs-remote diff.
 
-If `diffTool` is set in the config, it's used to display differences instead of the built-in unified diff. By default it receives `$LOCAL` and `$REMOTE`, plus `$BASE` when a shadow file exists — a three-way-capable tool (e.g. `meld`) can use all three to show local/remote changes side by side. With `--local`/`--remote`, the tool is invoked as a plain two-way diff of that side against the base.
+If `diffTool` is set in the config, it's used to display differences instead of the built-in unified diff. By default it receives `$LOCAL` and `$REMOTE`, plus `$BASE` when a shadow file exists. A three-way-capable tool can use all three to show local and remote changes side by side; the `kdiff3`, `meld`, `vimdiff` and `p4merge` presets do this automatically. With `--local`/`--remote`, the tool is invoked as a plain two-way diff of that side against the base.
 
 ## How it works
 
@@ -91,17 +91,46 @@ Optional `.notion-sync.json`:
 ```json
 {
   "tokenV2": "...",
-  "mergeTool": "meld $LOCAL $REMOTE $MERGED",
-  "diffTool": "meld $BASE $LOCAL $REMOTE"
+  "mergeTool": "kdiff3",
+  "diffTool": "kdiff3"
 }
 ```
 
-The `mergeTool` field supports `$BASE`, `$LOCAL`, `$REMOTE`, and `$MERGED` placeholders. The `diffTool` field supports `$LOCAL` and `$REMOTE` (`$BASE` too, once a shadow file exists).
+`mergeTool` and `diffTool` are either the name of a built-in preset or a custom shell command.
+
+**Presets** (invocations modelled on `git mergetool`): `kdiff3`, `meld`, `vimdiff`, `nvimdiff`, `gvimdiff`, `code` (alias `vscode`), `bc` (Beyond Compare, aliases `bc3`/`bc4`), `p4merge`, and `smerge` (merge only). Presets give each pane a descriptive title wherever the tool supports it (kdiff3, meld, Beyond Compare, p4merge), for example:
+
+| Pane   | Title                                          |
+| ------ | ---------------------------------------------- |
+| Base   | `base: last sync 2026-11-01 09:12`             |
+| Local  | `local: docs/notes.md`                         |
+| Remote | `notion: "Meeting notes", edited 2026-11-05 14:03` |
+| Output | `merged: docs/notes.md`                        |
+
+Without a shadow file, the merge is two-way (local vs. remote, no base pane). Temp files are named after the synced file (`notes.BASE.md`, `notes.LOCAL.md`, `notes.REMOTE.md`, and `notes.md` for the output), so tools that only show file names (vimdiff, VS Code) still show what is being merged. The output file starts out as the automatic merge with conflict markers, so editors that open it directly show both sides of each conflict. If the tool exits without changing it, or exits non-zero, `pull` keeps the conflict markers in the local file.
+
+**Custom commands** run through the shell. `mergeTool` supports `$BASE`, `$LOCAL`, `$REMOTE`, and `$MERGED` placeholders. `$BASE` is an empty file before the first sync. `diffTool` supports `$LOCAL` and `$REMOTE`, plus `$BASE` once a shadow file exists. The pane titles are available as the environment variables `$BASE_LABEL`, `$LOCAL_LABEL`, `$REMOTE_LABEL` and `$MERGED_LABEL` (POSIX shells), e.g.:
+
+```bash
+notion-sync config set mergeTool 'kdiff3 --auto --L1 "$BASE_LABEL" --L2 "$LOCAL_LABEL" --L3 "$REMOTE_LABEL" -o $MERGED $BASE $LOCAL $REMOTE'
+```
+
+When no merge tool is configured or the tool doesn't resolve the merge, conflicts are written as diff3-style markers that include the base version, using the same titles:
+
+```
+<<<<<<< local: docs/notes.md
+our edit
+||||||| base: last sync 2026-11-01 09:12
+original text
+=======
+their edit
+>>>>>>> notion: "Meeting notes", edited 2026-11-05 14:03
+```
 
 Rather than editing the file directly, you can manage these with the `config` subcommand:
 
 ```bash
-notion-sync config set mergeTool 'meld $LOCAL $REMOTE $MERGED'
+notion-sync config set mergeTool kdiff3
 notion-sync config set diffTool 'meld $LOCAL $REMOTE'
 notion-sync config get                # show all configurable values
 notion-sync config get diffTool       # show one value
@@ -111,7 +140,7 @@ notion-sync config unset diffTool
 By default these write to the home config (`~/.config/notion-sync/config.json`); pass `--local` to write to `./.notion-sync.json` in the current project instead:
 
 ```bash
-notion-sync config set mergeTool 'meld $LOCAL $REMOTE $MERGED' --local
+notion-sync config set mergeTool kdiff3 --local
 ```
 
 ## Development
@@ -125,6 +154,7 @@ yarn test                 # run tests
 ## Tests
 
 - **Unit tests** (`test/diff.test.ts`) — block fingerprinting, change detection, LCS matching, comment mark transplantation
+- **Merge/tool tests** (`test/merge.test.ts`) — conflict markers, merge/diff tool presets and custom commands (via fake tools on `PATH`)
 - **E2E tests** (`test/e2e.test.ts`) — full pull/edit/push cycle verifying comment preservation (requires `NOTION_TOKEN_V2` and `NOTION_TEST_PAGE` env vars)
 
 ## License
